@@ -14,6 +14,15 @@ import getScrollbarSize from 'dom-helpers/util/scrollbarSize'
 import React, { Component, PropTypes } from 'react'
 import shouldPureComponentUpdate from 'react-pure-render/function'
 
+const noop = ()=>{}
+
+let isStickySupported = (function() {
+  let el = document.createElement('a')
+  let mStyle = el.style
+  mStyle.cssText = 'position:sticky; position: -webkit-sticky;'
+  return mStyle.position.indexOf('sticky') !== -1
+})()
+
 /**
  * Specifies the number of miliseconds during which to disable pointer events while a scroll is in progress.
  * This improves performance and makes scrolling smoother.
@@ -436,14 +445,12 @@ export default class Grid extends Component {
       this._rowStartIndex = overscanRowIndices.overscanStartIndex
       this._rowStopIndex = overscanRowIndices.overscanStopIndex
 
-      let lockedOffset = scrollTop
       for (let rowIndex = 0; rowIndex < rowsLocked; rowIndex++) {
-        this.renderColumns(childrenToDisplay, rowIndex, lockedOffset)
-        lockedOffset += this._getRowHeight(rowIndex)
+        this.renderColumns(childrenToDisplay, rowIndex, true)
       }
 
       for (let rowIndex = this._rowStartIndex; rowIndex <= this._rowStopIndex; rowIndex++) {
-        this.renderColumns(childrenToDisplay, rowIndex, null)
+        this.renderColumns(childrenToDisplay, rowIndex, false)
       }
     }
 
@@ -496,42 +503,67 @@ export default class Grid extends Component {
     )
   }
 
-  renderColumns (childrenToDisplay, rowIndex, top) {
+  renderColumns (childrenToDisplay, rowIndex, rowLocked) {
     let { columnsLocked } = this.props
     let lockedOffset = this.state.scrollLeft
 
     for (let columnIndex = 0; columnIndex < columnsLocked; columnIndex++) {
-      let child = this.renderCell(columnIndex, rowIndex, lockedOffset, top)
+      let child = this.renderCell(columnIndex, true, rowIndex, rowLocked)
       lockedOffset += this._getColumnWidth(columnIndex)
 
       childrenToDisplay.push(child)
     }
 
     for (let columnIndex = this._columnStartIndex; columnIndex <= this._columnStopIndex; columnIndex++) {
-      let child = this.renderCell(columnIndex, rowIndex, null, top)
+      let child = this.renderCell(columnIndex, false, rowIndex, rowLocked)
       childrenToDisplay.push(child)
     }
   }
 
-  renderCell (columnIndex, rowIndex, left, top) {
+  renderCell (columnIndex, columnLocked, rowIndex, rowLocked) {
+    let { scrollTop, scrollLeft } = this.state;
     let rowDatum = this._rowMetadata[rowIndex]
     let columnDatum = this._columnMetadata[columnIndex]
     let renderedCell = this.props.renderCell({ columnIndex, rowIndex })
     let key = `${rowIndex}-${columnIndex}`
 
+    let style = {
+      height: this._getRowHeight(rowIndex),
+      width: this._getColumnWidth(columnIndex)
+    }
+
+    if (isStickySupported) {
+      let tx = columnDatum.offset
+      let ty = rowDatum.offset
+
+      style.transform = `translate3d(${tx}px, ${ty}px, 0px)`
+
+      if (rowLocked || columnLocked)
+        style.position = 'sticky'
+
+      if (columnLocked)
+        style.left = columnDatum.offset
+
+      if (rowLocked) {
+        style.top = rowDatum.offset
+        style.display = 'block'
+        style.float = 'left'
+      }
+    }
+    else {
+      style.position = 'absolute';
+      style.left = columnDatum.offset + (columnLocked ? scrollLeft : 0)
+      style.top = rowDatum.offset + (rowLocked ? scrollTop : 0)
+    }
+
     return (
       <div
         key={key}
         className={cn('Grid__cell', {
-          'Grid__cell--locked-row': top != null,
-          'Grid__cell--locked-column': left != null
+          'Grid__cell--locked-row': rowLocked,
+          'Grid__cell--locked-column': columnLocked
         })}
-        style={{
-          height: this._getRowHeight(rowIndex),
-          left: `${left || columnDatum.offset}px`,
-          top: `${top || rowDatum.offset}px`,
-          width: this._getColumnWidth(columnIndex)
-        }}
+        style={style}
       >
         {renderedCell}
       </div>

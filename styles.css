@@ -14,7 +14,7 @@
 
 .Grid__innerScrollContainer {
   box-sizing: border-box;
-  overflow: hidden;
+  /*overflow: hidden;*/
 }
 
 .Grid__cell {
